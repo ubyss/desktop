@@ -38,6 +38,37 @@
         margin-bottom: var(--spacing);
       }
 
+      &.watched-repository-folders {
+        ul {
+          list-style: none;
+          margin: 0 0 var(--spacing-half) 0;
+          padding: 0;
+        }
+
+        .watched-repository-folder {
+          display: flex;
+          align-items: center;
+          padding: var(--spacing-half) 0;
+
+          &:not(:last-child) {
+            border-bottom: var(--base-border);
+          }
+
+          .octicon {
+            flex-shrink: 0;
+            margin-right: var(--spacing-half);
+            color: var(--text-secondary-color);
+          }
+
+          .watched-repository-folder-path {
+            flex-grow: 1;
+            min-width: 0;
+            margin-right: var(--spacing);
+            overflow-wrap: anywhere;
+          }
+        }
+      }
+
       .checkbox-component:not(:last-child) {
         margin-bottom: var(--spacing-half);
       }

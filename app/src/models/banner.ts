@@ -17,6 +17,7 @@ export enum BannerType {
   SuccessfulReorder = 'SuccessfulReorder',
   ConflictsFound = 'ConflictsFound',
   OSVersionNoLongerSupported = 'OSVersionNoLongerSupported',
+  RepositoriesAutoAdded = 'RepositoriesAutoAdded',
 }
 
 export type Banner =
@@ -122,3 +123,10 @@ export type Banner =
       readonly onOpenConflictsDialog: () => void
     }
   | { readonly type: BannerType.OSVersionNoLongerSupported }
+  | {
+      readonly type: BannerType.RepositoriesAutoAdded
+      /** number of repositories added from the watched folders */
+      readonly count: number
+      /** the watched folder they were found in, or null if several */
+      readonly folder: string | null
+    }

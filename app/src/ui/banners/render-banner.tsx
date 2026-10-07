@@ -19,6 +19,7 @@ import { SuccessfulSquash } from './successful-squash'
 import { SuccessBanner } from './success-banner'
 import { ConflictsFoundBanner } from './conflicts-found-banner'
 import { OSVersionNoLongerSupportedBanner } from './os-version-no-longer-supported-banner'
+import { RepositoriesAutoAdded } from './repositories-auto-added'
 
 export function renderBanner(
   banner: Banner,
@@ -171,6 +172,15 @@ export function renderBanner(
       )
     case BannerType.OSVersionNoLongerSupported:
       return <OSVersionNoLongerSupportedBanner onDismissed={onDismissed} />
+    case BannerType.RepositoriesAutoAdded:
+      return (
+        <RepositoriesAutoAdded
+          count={banner.count}
+          folder={banner.folder}
+          onDismissed={onDismissed}
+          key={'repositories-auto-added'}
+        />
+      )
     default:
       return assertNever(banner, `Unknown popup type: ${banner}`)
   }

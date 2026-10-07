@@ -4,12 +4,20 @@ import { Checkbox, CheckboxValue } from '../lib/checkbox'
 import { LinkButton } from '../lib/link-button'
 import { SamplesURL } from '../../lib/stats'
 import { isWindowsOpenSSHAvailable } from '../../lib/ssh/ssh'
+import { Button } from '../lib/button'
+import { showOpenDialog } from '../main-process-proxy'
+import { normalizeRepositoryPath } from '../../lib/watched-repository-folders'
+import { WatchedRepositoryFolder } from './watched-repository-folder'
 
 interface IAdvancedPreferencesProps {
   readonly useWindowsOpenSSH: boolean
   readonly optOutOfUsageTracking: boolean
   readonly useExternalCredentialHelper: boolean
   readonly repositoryIndicatorsEnabled: boolean
+  readonly watchedRepositoryFolders: ReadonlyArray<string>
+  readonly onWatchedRepositoryFoldersChanged: (
+    folders: ReadonlyArray<string>
+  ) => void
   readonly onUseWindowsOpenSSHChanged: (checked: boolean) => void
   readonly onOptOutofReportingChanged: (checked: boolean) => void
   readonly onUseExternalCredentialHelperChanged: (checked: boolean) => void
@@ -74,6 +82,68 @@ export class Advanced extends React.Component<
     this.props.onUseWindowsOpenSSHChanged(event.currentTarget.checked)
   }
 
+  private onAddWatchedFolder = async () => {
+    const folder = await showOpenDialog({ properties: ['openDirectory'] })
+    if (folder === null) {
+      return
+    }
+
+    const normalized = normalizeRepositoryPath(folder)
+    const { watchedRepositoryFolders } = this.props
+    if (
+      watchedRepositoryFolders.some(
+        f => normalizeRepositoryPath(f) === normalized
+      )
+    ) {
+      return
+    }
+
+    this.props.onWatchedRepositoryFoldersChanged([
+      ...watchedRepositoryFolders,
+      folder,
+    ])
+  }
+
+  private onRemoveWatchedFolder = (folder: string) => {
+    this.props.onWatchedRepositoryFoldersChanged(
+      this.props.watchedRepositoryFolders.filter(f => f !== folder)
+    )
+  }
+
+  private renderWatchedRepositoryFolders() {
+    const folders = this.props.watchedRepositoryFolders
+
+    return (
+      <div className="advanced-section watched-repository-folders">
+        <h2>Repository folders</h2>
+        <div
+          id="watched-repository-folders-description"
+          className="settings-description"
+        >
+          <p>
+            Repositories cloned directly inside these folders are added to
+            GitHub Desktop automatically. Repositories you remove from GitHub
+            Desktop won't be added back.
+          </p>
+        </div>
+        {folders.length > 0 && (
+          <ul aria-describedby="watched-repository-folders-description">
+            {folders.map(folder => (
+              <WatchedRepositoryFolder
+                key={folder}
+                folder={folder}
+                onRemove={this.onRemoveWatchedFolder}
+              />
+            ))}
+          </ul>
+        )}
+        <Button onClick={this.onAddWatchedFolder}>
+          {__DARWIN__ ? 'Add Folder…' : 'Add folder…'}
+        </Button>
+      </div>
+    )
+  }
+
   private reportDesktopUsageLabel() {
     return (
       <span>
@@ -86,6 +156,7 @@ export class Advanced extends React.Component<
   public render() {
     return (
       <DialogContent>
+        {this.renderWatchedRepositoryFolders()}
         <div className="advanced-section">
           <h2>Background updates</h2>
           <Checkbox

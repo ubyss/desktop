@@ -1112,6 +1112,11 @@ export class Dispatcher {
     return this.appStore._setBanner(state)
   }
 
+  /** Update the folders whose repositories are added automatically */
+  public setWatchedRepositoryFolders(folders: ReadonlyArray<string>) {
+    return this.appStore._setWatchedRepositoryFolders(folders)
+  }
+
   /**
    * Close the current banner, if found.
    *

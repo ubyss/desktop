@@ -315,6 +315,17 @@ import {
 } from '../feature-flag'
 import { isGHES } from '../endpoint-capabilities'
 import { Banner, BannerType } from '../../models/banner'
+import { RepositoryFolderWatcher } from './helpers/repository-folder-watcher'
+import {
+  findRepositoriesInFolder,
+  getIgnoredRepositoryPaths,
+  getRepositoryPathsToAdd,
+  getWatchedRepositoryFolders,
+  ignoreRepositoryPath,
+  isPathInsideFolder,
+  setWatchedRepositoryFolders,
+  unignoreRepositoryPath,
+} from '../watched-repository-folders'
 import { ComputedAction } from '../../models/computed-action'
 import {
   createDesktopStashEntry,
@@ -605,6 +616,17 @@ export class AppStore extends TypedBaseStore<IAppState> {
   private currentBranchPruner: BranchPruner | null = null
 
   private readonly repositoryIndicatorUpdater: RepositoryIndicatorUpdater
+
+  /** Watches the user's repository folders for newly cloned repositories */
+  private readonly repositoryFolderWatcher = new RepositoryFolderWatcher(() =>
+    this.scanWatchedRepositoryFolders()
+  )
+
+  /** Whether a scan of the watched repository folders is in progress */
+  private isScanningWatchedRepositoryFolders = false
+
+  /** When the watched repository folders were last scanned */
+  private lastWatchedRepositoryFoldersScan = 0
 
   private showWelcomeFlow = false
   private focusCommitMessage = false
@@ -2657,6 +2679,86 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.accountsStore.refresh()
 
     this.updateMenuLabelsForSelectedRepository()
+
+    this.startWatchingRepositoryFolders()
+  }
+
+  /** Update the folders whose repositories are added automatically */
+  public _setWatchedRepositoryFolders(folders: ReadonlyArray<string>) {
+    setWatchedRepositoryFolders(folders)
+    this.startWatchingRepositoryFolders()
+  }
+
+  private startWatchingRepositoryFolders() {
+    this.repositoryFolderWatcher.start(getWatchedRepositoryFolders())
+    this.scanWatchedRepositoryFolders()
+  }
+
+  /**
+   * Add any repository found directly inside the watched folders which isn't
+   * in the app yet, unless the user removed it from the app before.
+   */
+  private async scanWatchedRepositoryFolders() {
+    const folders = getWatchedRepositoryFolders()
+    if (folders.length === 0 || this.isScanningWatchedRepositoryFolders) {
+      return
+    }
+
+    this.isScanningWatchedRepositoryFolders = true
+    this.lastWatchedRepositoryFoldersScan = Date.now()
+
+    try {
+      const ignoredPaths = getIgnoredRepositoryPaths()
+      const pathsToAdd = new Array<string>()
+      const foldersWithNewRepositories = new Array<string>()
+
+      for (const folder of folders) {
+        const candidates = await findRepositoriesInFolder(folder).catch(e => {
+          log.warn(`[AppStore] could not scan repository folder ${folder}`, e)
+          return []
+        })
+
+        const newPaths = getRepositoryPathsToAdd(
+          candidates,
+          this.repositories.map(r => r.path),
+          ignoredPaths
+        )
+
+        for (const path of newPaths) {
+          // Only pick up valid repositories so that broken or in-progress
+          // clones don't result in error dialogs.
+          const type = await getRepositoryType(path).catch(() => null)
+          if (type?.kind === 'regular') {
+            pathsToAdd.push(path)
+            if (!foldersWithNewRepositories.includes(folder)) {
+              foldersWithNewRepositories.push(folder)
+            }
+          }
+        }
+      }
+
+      if (pathsToAdd.length === 0) {
+        return
+      }
+
+      log.info(
+        `[AppStore] adding ${pathsToAdd.length} repositories from watched folders`
+      )
+      await this._addRepositories(pathsToAdd)
+
+      this._setBanner({
+        type: BannerType.RepositoriesAutoAdded,
+        count: pathsToAdd.length,
+        folder:
+          foldersWithNewRepositories.length === 1
+            ? foldersWithNewRepositories[0]
+            : null,
+      })
+    } catch (e) {
+      log.error('[AppStore] failed to scan watched repository folders', e)
+    } finally {
+      this.isScanningWatchedRepositoryFolders = false
+    }
   }
 
   /**
@@ -8072,6 +8174,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     if (this.appIsFocused) {
       this.repositoryIndicatorUpdater.resume()
+
+      // Catch repositories the folder watcher may have missed while the app
+      // was in the background, without rescanning on every focus change.
+      if (Date.now() - this.lastWatchedRepositoryFoldersScan > 30 * 1000) {
+        this.scanWatchedRepositoryFolders()
+      }
       if (this.selectedRepository instanceof Repository) {
         this.startPullRequestUpdater(this.selectedRepository)
         // if we're in the tutorial and we don't have an editor yet, check for one!
@@ -8218,6 +8326,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
         const validatedPath = repositoryType.topLevelWorkingDirectory
         log.info(`[AppStore] adding repository at ${validatedPath} to store`)
 
+        // Adding a repository explicitly undoes a previous removal from a
+        // watched folder.
+        unignoreRepositoryPath(validatedPath)
+
         const repositories = this.repositories
         const existing = matchExistingRepository(repositories, validatedPath)
 
@@ -8324,6 +8436,17 @@ export class AppStore extends TypedBaseStore<IAppState> {
         this._removeCloningRepository(repository)
       } else {
         await this.repositoriesStore.removeRepository(repository)
+
+        // Don't add the repository back automatically if it lives in one of
+        // the watched repository folders.
+        if (
+          !moveToTrash &&
+          getWatchedRepositoryFolders().some(f =>
+            isPathInsideFolder(repository.path, f)
+          )
+        ) {
+          ignoreRepositoryPath(repository.path)
+        }
       }
     } catch (err) {
       this.emitError(err)

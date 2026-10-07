@@ -85,6 +85,7 @@ import {
   enableFormattingPreferences,
 } from '../../lib/feature-flag'
 import { validateCopilotAppPath } from '../../lib/copilot-app'
+import { getWatchedRepositoryFolders } from '../../lib/watched-repository-folders'
 
 interface IPreferencesProps {
   readonly dispatcher: Dispatcher
@@ -175,6 +176,10 @@ interface IPreferencesState {
   readonly existingLockFilePath?: string
   readonly repositoryIndicatorsEnabled: boolean
 
+  /** Folders whose repositories are added to the app automatically */
+  readonly watchedRepositoryFolders: ReadonlyArray<string>
+  readonly initialWatchedRepositoryFolders: ReadonlyArray<string>
+
   readonly initiallySelectedTheme: ApplicationTheme
   readonly initiallySelectedTabSize: number
   readonly alwaysShowWorktreeList: boolean
@@ -253,6 +258,8 @@ export class Preferences extends React.Component<
       availableShells: [],
       selectedShell: this.props.selectedShell,
       repositoryIndicatorsEnabled: this.props.repositoryIndicatorsEnabled,
+      watchedRepositoryFolders: getWatchedRepositoryFolders(),
+      initialWatchedRepositoryFolders: getWatchedRepositoryFolders(),
       initiallySelectedTheme: this.props.selectedTheme,
       initiallySelectedTabSize: this.props.selectedTabSize,
       alwaysShowWorktreeList: this.props.alwaysShowWorktreeList,
@@ -744,6 +751,10 @@ export class Preferences extends React.Component<
             optOutOfUsageTracking={this.state.optOutOfUsageTracking}
             useExternalCredentialHelper={this.state.useExternalCredentialHelper}
             repositoryIndicatorsEnabled={this.state.repositoryIndicatorsEnabled}
+            watchedRepositoryFolders={this.state.watchedRepositoryFolders}
+            onWatchedRepositoryFoldersChanged={
+              this.onWatchedRepositoryFoldersChanged
+            }
             onUseWindowsOpenSSHChanged={this.onUseWindowsOpenSSHChanged}
             onOptOutofReportingChanged={this.onOptOutofReportingChanged}
             onUseExternalCredentialHelperChanged={
@@ -785,6 +796,12 @@ export class Preferences extends React.Component<
     repositoryIndicatorsEnabled: boolean
   ) => {
     this.setState({ repositoryIndicatorsEnabled })
+  }
+
+  private onWatchedRepositoryFoldersChanged = (
+    watchedRepositoryFolders: ReadonlyArray<string>
+  ) => {
+    this.setState({ watchedRepositoryFolders })
   }
 
   private onLockFileDeleted = () => {
@@ -1072,6 +1089,15 @@ export class Preferences extends React.Component<
         dispatcher.setRepositoryIndicatorsEnabled(
           this.state.repositoryIndicatorsEnabled
         )
+      }
+
+      const { watchedRepositoryFolders, initialWatchedRepositoryFolders } =
+        this.state
+      if (
+        watchedRepositoryFolders.join('\n') !==
+        initialWatchedRepositoryFolders.join('\n')
+      ) {
+        dispatcher.setWatchedRepositoryFolders(watchedRepositoryFolders)
       }
 
       if (this.state.hooksPreferencesDirty) {
