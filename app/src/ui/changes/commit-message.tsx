@@ -37,7 +37,11 @@ import {
   isAttributableEmailFor,
   lookupPreferredEmail,
 } from '../../lib/email'
-import { setGlobalConfigValue } from '../../lib/git/config'
+import {
+  getConfigValue,
+  setConfigValue,
+  setGlobalConfigValue,
+} from '../../lib/git/config'
 import { Popup, PopupType } from '../../models/popup'
 import { RepositorySettingsTab } from '../repository-settings/repository-settings'
 import { IdealSummaryLength } from '../../lib/wrap-rich-text-commit-message'
@@ -794,7 +798,16 @@ export class CommitMessage extends React.Component<
   }
 
   private onUpdateUserEmail = async (email: string) => {
-    await setGlobalConfigValue('user.email', email)
+    const { repository } = this.props
+
+    // If the repository overrides the email locally, updating the global
+    // config wouldn't change the commit author, so update the local one.
+    const localEmail = await getConfigValue(repository, 'user.email', true)
+    if (localEmail !== null) {
+      await setConfigValue(repository, 'user.email', email)
+    } else {
+      await setGlobalConfigValue('user.email', email)
+    }
     this.props.onRefreshAuthor()
   }
 

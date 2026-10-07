@@ -103,4 +103,71 @@
   .link-button-component {
     display: inline;
   }
+
+  .commit-email-switcher {
+    flex-direction: column;
+
+    & > *:not(:last-child) {
+      margin-right: 0;
+      margin-bottom: var(--spacing-half);
+    }
+  }
+
+  .commit-email-options {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 220px;
+    overflow-y: auto;
+
+    li + li {
+      margin-top: 2px;
+    }
+
+    .commit-email-option {
+      // override default button styles
+      display: flex;
+      align-items: center;
+      width: 100%;
+      height: auto;
+      padding: var(--spacing-half);
+      border: 1px solid transparent;
+      border-radius: var(--border-radius);
+      background-color: transparent;
+      text-align: left;
+      white-space: normal;
+
+      &:hover {
+        background-color: var(--box-hover-background-color);
+      }
+
+      &.selected {
+        border-color: var(--focus-color);
+        background-color: var(--box-selected-background-color);
+      }
+
+      .avatar-container,
+      .avatar {
+        flex-shrink: 0;
+        width: 28px;
+        height: 28px;
+      }
+
+      .avatar-container {
+        margin-right: var(--spacing);
+      }
+
+      .commit-email-option-email {
+        flex-grow: 1;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .octicon {
+        flex-shrink: 0;
+        margin-left: var(--spacing-half);
+        color: var(--color-new);
+      }
+    }
+  }
 }

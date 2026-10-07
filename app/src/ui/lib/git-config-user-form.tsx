@@ -10,6 +10,12 @@ import { Select } from './select'
 import { GitEmailNotFoundWarning } from './git-email-not-found-warning'
 import { getStealthEmailForAccount } from '../../lib/email'
 import memoizeOne from 'memoize-one'
+import { Button } from './button'
+import {
+  addSavedGitEmail,
+  getSavedGitEmails,
+  removeSavedGitEmail,
+} from '../../lib/saved-git-emails'
 
 const OtherEmailSelectValue = 'Other'
 
@@ -40,6 +46,12 @@ interface IGitConfigUserFormState {
    * enter a custom email address.
    */
   readonly emailIsOther: boolean
+
+  /**
+   * Custom email addresses the user has saved so they can switch between them
+   * from the dropdown without typing them again.
+   */
+  readonly savedEmails: ReadonlyArray<string>
 }
 
 type AccountEmail = {
@@ -95,15 +107,47 @@ export class GitConfigUserForm extends React.Component<
   public constructor(props: IGitConfigUserFormProps) {
     super(props)
 
+    const savedEmails = getSavedGitEmails()
+
     this.state = {
       emailIsOther:
-        !this.isValidEmail(props.email) && !props.isLoadingGitConfig,
+        !this.isValidEmail(props.email, savedEmails) &&
+        !props.isLoadingGitConfig,
+      savedEmails,
     }
   }
 
-  private isValidEmail = (email: string) => {
+  /** Whether the email is one of the suggestions offered in the dropdown */
+  private isValidEmail = (
+    email: string,
+    savedEmails: ReadonlyArray<string> = this.state.savedEmails
+  ) => this.isAccountEmail(email) || this.isSavedEmail(email, savedEmails)
+
+  private isAccountEmail = (email: string) => {
     const normalizedEmail = email.toLowerCase()
     return this.accountEmails.some(x => x.normalizedEmail === normalizedEmail)
+  }
+
+  private isSavedEmail = (
+    email: string,
+    savedEmails: ReadonlyArray<string> = this.state.savedEmails
+  ) => {
+    const normalizedEmail = email.toLowerCase()
+    return savedEmails.some(x => x.toLowerCase() === normalizedEmail)
+  }
+
+  /** Saved emails which aren't already offered as account emails */
+  private get savedOnlyEmails(): ReadonlyArray<string> {
+    return this.state.savedEmails.filter(e => !this.isAccountEmail(e))
+  }
+
+  /** Whether the dropdown is showing one of the user's saved emails */
+  private get isSavedEmailSelected() {
+    return (
+      !this.state.emailIsOther &&
+      !this.isAccountEmail(this.props.email) &&
+      this.isSavedEmail(this.props.email)
+    )
   }
 
   public componentDidUpdate(
@@ -154,7 +198,7 @@ export class GitConfigUserForm extends React.Component<
         </Row>
         {this.renderEmailDropdown()}
         {this.renderEmailTextBox()}
-        {this.state.emailIsOther ? (
+        {this.state.emailIsOther || this.isSavedEmailSelected ? (
           <GitEmailNotFoundWarning
             accounts={this.props.accounts}
             email={this.props.email}
@@ -165,7 +209,7 @@ export class GitConfigUserForm extends React.Component<
   }
 
   private renderEmailDropdown() {
-    if (this.accountEmails.length === 0) {
+    if (!this.hasEmailSuggestions) {
       return null
     }
 
@@ -193,16 +237,34 @@ export class GitConfigUserForm extends React.Component<
               {e.email} {shouldShowAccountType && accountSuffix(e.account)}
             </option>
           ))}
+          {this.savedOnlyEmails.length > 0 && (
+            <optgroup label="Saved emails">
+              {this.savedOnlyEmails.map(e => (
+                <option key={`saved-${e}`} value={e}>
+                  {e}
+                </option>
+              ))}
+            </optgroup>
+          )}
           <option key={OtherEmailSelectValue} value={OtherEmailSelectValue}>
             {OtherEmailSelectValue}
           </option>
         </Select>
+        {this.isSavedEmailSelected && (
+          <Button
+            onClick={this.onRemoveSavedEmail}
+            disabled={this.props.disabled}
+            ariaLabel={`Remove saved email ${this.props.email}`}
+          >
+            Remove
+          </Button>
+        )}
       </Row>
     )
   }
 
   private renderEmailTextBox() {
-    if (this.state.emailIsOther === false && this.accountEmails.length > 0) {
+    if (this.state.emailIsOther === false && this.hasEmailSuggestions) {
       return null
     }
 
@@ -226,12 +288,50 @@ export class GitConfigUserForm extends React.Component<
           ariaDescribedBy="git-email-not-found-warning-for-screen-readers"
           ariaControls="git-email-not-found-warning-for-screen-readers"
         />
+        {this.canSaveEmail && (
+          <Button
+            onClick={this.onSaveEmail}
+            disabled={this.props.disabled}
+            tooltip="Save this email so you can pick it from the dropdown later"
+          >
+            {__DARWIN__ ? 'Save Email' : 'Save email'}
+          </Button>
+        )}
       </Row>
     )
   }
 
   private get accountEmails(): ReadonlyArray<AccountEmail> {
     return this.getAccountEmailsFromAccounts(this.props.accounts)
+  }
+
+  private get hasEmailSuggestions() {
+    return this.accountEmails.length > 0 || this.savedOnlyEmails.length > 0
+  }
+
+  /** Whether the custom email typed by the user can be saved */
+  private get canSaveEmail() {
+    const email = this.props.email.trim()
+    return (
+      email.includes('@') &&
+      !this.isAccountEmail(email) &&
+      !this.isSavedEmail(email)
+    )
+  }
+
+  private onSaveEmail = () => {
+    const email = this.props.email.trim()
+    const savedEmails = addSavedGitEmail(email)
+    this.setState({ savedEmails, emailIsOther: false })
+
+    if (email !== this.props.email) {
+      this.props.onEmailChanged(email)
+    }
+  }
+
+  private onRemoveSavedEmail = () => {
+    const savedEmails = removeSavedGitEmail(this.props.email)
+    this.setState({ savedEmails, emailIsOther: true })
   }
 
   private onEmailSelectChange = (event: React.FormEvent<HTMLSelectElement>) => {

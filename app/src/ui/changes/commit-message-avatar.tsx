@@ -1,5 +1,4 @@
 import React from 'react'
-import { Select } from '../lib/select'
 import { Button } from '../lib/button'
 import { Row } from '../lib/row'
 import {
@@ -19,6 +18,8 @@ import classNames from 'classnames'
 import { RepoRulesMetadataFailures } from '../../models/repo-rules'
 import { RepoRulesMetadataFailureList } from '../repository-rules/repo-rules-failure-list'
 import { Account } from '../../models/account'
+import { CommitEmailOption } from './commit-email-option'
+import { addSavedGitEmail, getSavedGitEmails } from '../../lib/saved-git-emails'
 
 export type CommitMessageAvatarWarningType =
   | 'none'
@@ -28,8 +29,8 @@ export type CommitMessageAvatarWarningType =
 interface ICommitMessageAvatarState {
   readonly isPopoverOpen: boolean
 
-  /** Currently selected account email address. */
-  readonly accountEmail: string
+  /** Custom email addresses the user has saved in the Git preferences. */
+  readonly savedEmails: ReadonlyArray<string>
 
   /** Whether the git configuration is local to the repository or global  */
   readonly isGitConfigLocal: boolean
@@ -110,7 +111,7 @@ export class CommitMessageAvatar extends React.Component<
 
     this.state = {
       isPopoverOpen: false,
-      accountEmail: this.props.preferredAccountEmail,
+      savedEmails: getSavedGitEmails(),
       isGitConfigLocal: false,
     }
     this.determineGitConfigLocation()
@@ -122,13 +123,6 @@ export class CommitMessageAvatar extends React.Component<
       this.props.user?.email !== prevProps.user?.email
     ) {
       this.determineGitConfigLocation()
-    }
-
-    if (
-      this.props.preferredAccountEmail !== prevProps.preferredAccountEmail &&
-      this.state.accountEmail === prevProps.preferredAccountEmail
-    ) {
-      this.setState({ accountEmail: this.props.preferredAccountEmail })
     }
   }
 
@@ -209,7 +203,8 @@ export class CommitMessageAvatar extends React.Component<
   private openPopover = () => {
     this.setState(prevState => {
       if (prevState.isPopoverOpen === false) {
-        return { isPopoverOpen: true }
+        // Saved emails may have changed in the preferences since last time
+        return { isPopoverOpen: true, savedEmails: getSavedGitEmails() }
       }
       return null
     })
@@ -247,7 +242,7 @@ export class CommitMessageAvatar extends React.Component<
 
     return (
       <>
-        <p>{user && user.name && `Email: ${user.email}`}</p>
+        {user && this.renderEmailSwitcher()}
 
         <p>
           You can update your {location} git configuration {locationDesc} in
@@ -277,8 +272,6 @@ export class CommitMessageAvatar extends React.Component<
   private renderWarningPopover() {
     const { warningType, emailRuleFailures } = this.props
 
-    const updateEmailTitle = __DARWIN__ ? 'Update Email' : 'Update email'
-
     const sharedHeader = (
       <>
         The email in your global Git config (
@@ -286,25 +279,11 @@ export class CommitMessageAvatar extends React.Component<
       </>
     )
 
-    const hasEmails = this.props.accountEmails.length > 0
+    const hasEmails = this.switchableEmails.length > 1
 
     const sharedFooter = (
       <>
-        {hasEmails && (
-          <Row>
-            <Select
-              label="Your Account Emails"
-              value={this.state.accountEmail}
-              onChange={this.onSelectedGitHubEmailChange}
-            >
-              {this.props.accountEmails.map(n => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </Select>
-          </Row>
-        )}
+        {this.renderEmailSwitcher()}
         <Row>
           <div className="secondary-text">
             You can{hasEmails ? ' also' : ''} choose an email local to this
@@ -319,11 +298,6 @@ export class CommitMessageAvatar extends React.Component<
           <Button onClick={this.onIgnoreClick} type="button">
             Ignore
           </Button>
-          {hasEmails && (
-            <Button onClick={this.onUpdateEmailClick} type="submit">
-              {updateEmailTitle}
-            </Button>
-          )}
         </Row>
       </>
     )
@@ -456,23 +430,101 @@ export class CommitMessageAvatar extends React.Component<
     this.closePopover()
   }
 
-  private onUpdateEmailClick = async (
-    event: React.MouseEvent<HTMLButtonElement>
-  ) => {
-    event.preventDefault()
-    this.closePopover()
+  /**
+   * The emails the user can switch to from the popover: the current one, the
+   * preferred and other account emails, and the user's saved emails.
+   */
+  private get switchableEmails(): ReadonlyArray<string> {
+    const { email, preferredAccountEmail, accountEmails } = this.props
+    const candidates = [
+      email ?? '',
+      preferredAccountEmail,
+      ...accountEmails,
+      ...this.state.savedEmails,
+    ]
 
-    if (this.props.email !== this.state.accountEmail) {
-      this.props.onUpdateEmail(this.state.accountEmail)
+    const seen = new Set<string>()
+    const emails = new Array<string>()
+
+    for (const candidate of candidates) {
+      const trimmed = candidate.trim()
+      const normalized = trimmed.toLowerCase()
+      if (normalized.length > 0 && !seen.has(normalized)) {
+        seen.add(normalized)
+        emails.push(trimmed)
+      }
     }
+
+    return emails
   }
 
-  private onSelectedGitHubEmailChange = (
-    event: React.FormEvent<HTMLSelectElement>
-  ) => {
-    const email = event.currentTarget.value
-    if (email) {
-      this.setState({ accountEmail: email })
+  private isCurrentEmail(email: string) {
+    return this.props.email?.toLowerCase() === email.toLowerCase()
+  }
+
+  private get isCurrentEmailSavable() {
+    const email = this.props.email?.trim().toLowerCase()
+    if (email === undefined || email.length === 0) {
+      return false
+    }
+
+    const isKnown = (e: string) => e.toLowerCase() === email
+    return (
+      !this.props.accountEmails.some(isKnown) &&
+      !this.state.savedEmails.some(isKnown)
+    )
+  }
+
+  private renderEmailSwitcher() {
+    const emails = this.switchableEmails
+    const canSwitch = emails.length > 1
+
+    return (
+      <Row className="commit-email-switcher">
+        {canSwitch && (
+          <div className="secondary-text" id="commit-email-switcher-label">
+            Switch commit email
+          </div>
+        )}
+        <ul
+          className="commit-email-options"
+          aria-labelledby={
+            canSwitch ? 'commit-email-switcher-label' : undefined
+          }
+        >
+          {emails.map(email => (
+            <CommitEmailOption
+              key={email}
+              email={email}
+              name={this.props.user?.name ?? ''}
+              endpoint={this.props.user?.endpoint ?? null}
+              accounts={this.props.accounts}
+              isSelected={this.isCurrentEmail(email)}
+              onSelect={this.onSelectEmail}
+            />
+          ))}
+        </ul>
+        {this.isCurrentEmailSavable && (
+          <LinkButton onClick={this.onSaveCurrentEmail}>
+            Save this email for quick switching
+          </LinkButton>
+        )}
+      </Row>
+    )
+  }
+
+  private onSelectEmail = (email: string) => {
+    if (this.isCurrentEmail(email)) {
+      return
+    }
+
+    this.closePopover()
+    this.props.onUpdateEmail(email)
+  }
+
+  private onSaveCurrentEmail = () => {
+    if (this.props.email !== undefined) {
+      this.setState({ savedEmails: addSavedGitEmail(this.props.email) })
     }
   }
 }
