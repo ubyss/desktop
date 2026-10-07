@@ -34,6 +34,19 @@ export interface IFilterListGroup<
   /** Whether to render this group's header. Defaults to true. */
   readonly showHeader?: boolean
 
+  /**
+   * Whether the group is collapsed, i.e. only its header is shown. Ignored
+   * while filtering, so that matching items are always visible. Only
+   * supported by SectionFilterList.
+   */
+  readonly collapsed?: boolean
+
+  /**
+   * Whether to show the group's header even when it has no items (except
+   * while filtering). Only supported by SectionFilterList.
+   */
+  readonly showWhenEmpty?: boolean
+
   /** The items in the group. */
   readonly items: ReadonlyArray<Item>
 }

@@ -27,6 +27,16 @@ import { enableWorktreeSupport } from '../../lib/feature-flag'
 import { SectionFilterList } from '../lib/section-filter-list'
 import { assertNever } from '../../lib/fatal-error'
 import { IAheadBehind } from '../../models/branch'
+import {
+  assignRepositoryToGroup,
+  deleteCustomGroup,
+  getCustomGroupIdForPath,
+  getCustomGroupKey,
+  IRepositoryGroupsState,
+  moveGroup,
+  toggleGroupCollapsed,
+} from '../../lib/repository-groups'
+import { RepositoryGroupHeader } from './repository-group-header'
 
 const BlankSlateImage = encodePathAsUrl(__dirname, 'static/empty-no-repo.svg')
 
@@ -34,6 +44,9 @@ interface IRepositoriesListProps {
   readonly selectedRepository: Repositoryish | null
   readonly repositories: ReadonlyArray<Repositoryish>
   readonly recentRepositories: ReadonlyArray<number>
+
+  /** The user's custom groups, order and collapsed groups */
+  readonly repositoryGroups: IRepositoryGroupsState
 
   /** A cache of the latest repository state values, keyed by the repository id */
   readonly localRepositoryStateLookup: ReadonlyMap<
@@ -122,16 +135,23 @@ export class RepositoriesList extends React.Component<
     (
       repositories: ReadonlyArray<Repositoryish> | null,
       localRepositoryStateLookup: ReadonlyMap<number, ILocalRepositoryState>,
-      recentRepositories: ReadonlyArray<number>
+      recentRepositories: ReadonlyArray<number>,
+      repositoryGroups: IRepositoryGroupsState
     ) =>
       repositories === null
         ? []
         : groupRepositories(
             repositories,
             localRepositoryStateLookup,
-            recentRepositories
+            recentRepositories,
+            repositoryGroups
           )
   )
+
+  /** The groups as last rendered, used by the group header actions */
+  private renderedGroups: ReadonlyArray<
+    IFilterListGroup<IRepositoryListItem, RepositoryListGroup>
+  > = []
 
   /**
    * A memoized function for finding the selected list item based
@@ -250,25 +270,186 @@ export class RepositoriesList extends React.Component<
       return group.owner.login
     } else if (kind === 'recent') {
       return 'Recent'
+    } else if (kind === 'custom') {
+      return group.name
     } else {
       assertNever(kind, `Unknown repository group kind ${kind}`)
     }
   }
 
   private renderGroupHeader = (group: RepositoryListGroup) => {
+    const key = getGroupKey(group)
     const label = this.getGroupLabel(group)
+    const count =
+      this.renderedGroups.find(g => getGroupKey(g.identifier) === key)?.items
+        .length ?? 0
 
     return (
       <TooltippedContent
-        key={getGroupKey(group)}
-        className="filter-list-group-header"
+        key={key}
         tooltip={label}
         onlyWhenOverflowed={true}
         tagName="div"
+        className="repository-group-header-container"
       >
-        {label}
+        <RepositoryGroupHeader
+          group={group}
+          label={label}
+          count={count}
+          isCollapsed={this.props.repositoryGroups.collapsed.includes(key)}
+          canCollapse={this.props.filterText.length === 0}
+          onToggle={this.onToggleGroup}
+          onContextMenu={this.onGroupContextMenu}
+        />
       </TooltippedContent>
     )
+  }
+
+  private updateRepositoryGroups(repositoryGroups: IRepositoryGroupsState) {
+    this.props.dispatcher.setRepositoryGroups(repositoryGroups)
+  }
+
+  private onToggleGroup = (group: RepositoryListGroup) => {
+    this.updateRepositoryGroups(
+      toggleGroupCollapsed(this.props.repositoryGroups, getGroupKey(group))
+    )
+  }
+
+  private onGroupContextMenu = (group: RepositoryListGroup) => {
+    const { repositoryGroups } = this.props
+    const key = getGroupKey(group)
+    const visibleKeys = this.renderedGroups.map(g => getGroupKey(g.identifier))
+    const index = visibleKeys.indexOf(key)
+    const isCollapsed = repositoryGroups.collapsed.includes(key)
+    const canCollapse = this.props.filterText.length === 0
+
+    const items: IMenuItem[] = [
+      {
+        label: isCollapsed ? 'Expand' : 'Collapse',
+        action: this.onToggleGroup.bind(this, group),
+        enabled: canCollapse,
+      },
+      {
+        label: __DARWIN__ ? 'Collapse All Groups' : 'Collapse all groups',
+        action: () =>
+          this.updateRepositoryGroups({
+            ...repositoryGroups,
+            collapsed: visibleKeys,
+          }),
+        enabled: canCollapse,
+      },
+      {
+        label: __DARWIN__ ? 'Expand All Groups' : 'Expand all groups',
+        action: () =>
+          this.updateRepositoryGroups({ ...repositoryGroups, collapsed: [] }),
+        enabled: canCollapse,
+      },
+      { type: 'separator' },
+      {
+        label: __DARWIN__ ? 'Move Up' : 'Move up',
+        action: () =>
+          this.updateRepositoryGroups(
+            moveGroup(repositoryGroups, visibleKeys, key, 'up')
+          ),
+        enabled: index > 0,
+      },
+      {
+        label: __DARWIN__ ? 'Move Down' : 'Move down',
+        action: () =>
+          this.updateRepositoryGroups(
+            moveGroup(repositoryGroups, visibleKeys, key, 'down')
+          ),
+        enabled: index !== -1 && index < visibleKeys.length - 1,
+      },
+      {
+        label: __DARWIN__ ? 'Reset Group Order' : 'Reset group order',
+        action: () =>
+          this.updateRepositoryGroups({ ...repositoryGroups, order: [] }),
+        enabled: repositoryGroups.order.length > 0,
+      },
+      { type: 'separator' },
+      {
+        label: __DARWIN__ ? 'New Group…' : 'New group…',
+        action: () => this.showGroupNameDialog(null, ''),
+      },
+    ]
+
+    if (group.kind === 'custom') {
+      items.push(
+        {
+          label: __DARWIN__ ? 'Rename Group…' : 'Rename group…',
+          action: () => this.showGroupNameDialog(group.id, group.name),
+        },
+        {
+          label: __DARWIN__ ? 'Delete Group' : 'Delete group',
+          action: () =>
+            this.updateRepositoryGroups(
+              deleteCustomGroup(repositoryGroups, group.id)
+            ),
+        }
+      )
+    }
+
+    showContextualMenu(items)
+  }
+
+  private showGroupNameDialog(
+    groupId: string | null,
+    initialName: string,
+    repositoryPath?: string
+  ) {
+    this.props.dispatcher.showPopup({
+      type: PopupType.RepositoryGroupName,
+      groupId,
+      initialName,
+      repositoryPath,
+    })
+  }
+
+  private getGroupMenuItems(repository: Repositoryish): IMenuItem[] {
+    const { repositoryGroups } = this.props
+    const currentGroupId = getCustomGroupIdForPath(
+      repositoryGroups,
+      repository.path
+    )
+
+    const submenu: IMenuItem[] = repositoryGroups.customGroups.map(g => ({
+      label: g.name,
+      type: 'checkbox',
+      checked: g.id === currentGroupId,
+      action: () =>
+        this.updateRepositoryGroups({
+          ...assignRepositoryToGroup(repositoryGroups, repository.path, g.id),
+          // Make sure the repository is visible in its new group
+          collapsed: repositoryGroups.collapsed.filter(
+            k => k !== getCustomGroupKey(g.id)
+          ),
+        }),
+    }))
+
+    if (submenu.length > 0) {
+      submenu.push({ type: 'separator' })
+    }
+
+    submenu.push({
+      label: __DARWIN__ ? 'New Group…' : 'New group…',
+      action: () => this.showGroupNameDialog(null, '', repository.path),
+    })
+
+    if (currentGroupId !== null) {
+      submenu.push({
+        label: __DARWIN__ ? 'Remove from Group' : 'Remove from group',
+        action: () =>
+          this.updateRepositoryGroups(
+            assignRepositoryToGroup(repositoryGroups, repository.path, null)
+          ),
+      })
+    }
+
+    return [
+      { label: __DARWIN__ ? 'Move to Group' : 'Move to group', submenu },
+      { type: 'separator' },
+    ]
   }
 
   private onItemClick = (item: IRepositoryListItem) => {
@@ -306,6 +487,7 @@ export class RepositoriesList extends React.Component<
         : undefined,
       repository: item.repository,
       shellLabel: this.props.shellLabel,
+      groupMenuItems: this.getGroupMenuItems(item.repository),
     })
 
     showContextualMenu(items)
@@ -325,8 +507,10 @@ export class RepositoriesList extends React.Component<
     const groups = this.getRepositoryGroups(
       this.props.repositories,
       this.props.localRepositoryStateLookup,
-      this.props.recentRepositories
+      this.props.recentRepositories,
+      this.props.repositoryGroups
     )
+    this.renderedGroups = groups
 
     // So there's two types of selection at play here. There's the repository
     // selection for the whole app and then there's the keyboard selection in
@@ -354,6 +538,7 @@ export class RepositoriesList extends React.Component<
           invalidationProps={{
             repositories: this.props.repositories,
             filterText: this.props.filterText,
+            repositoryGroups: this.props.repositoryGroups,
           }}
           onItemContextMenu={this.onItemContextMenu}
           getGroupAriaLabel={this.getGroupAriaLabelGetter(groups)}

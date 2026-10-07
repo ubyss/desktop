@@ -1,3 +1,4 @@
+import { IRepositoryGroupsState } from '../../lib/repository-groups'
 import { Disposable } from 'event-kit'
 
 import {
@@ -870,6 +871,11 @@ export class Dispatcher {
     newAlias: string | null
   ): Promise<void> {
     return this.appStore._changeRepositoryAlias(repository, newAlias)
+  }
+
+  /** Update the custom groups, order and collapsed groups of the repository list */
+  public setRepositoryGroups(repositoryGroups: IRepositoryGroupsState) {
+    return this.appStore._setRepositoryGroups(repositoryGroups)
   }
 
   /** Rename the branch to a new name. */

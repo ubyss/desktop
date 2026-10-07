@@ -732,17 +732,24 @@ function createStateUpdate<T extends IFilterListItem, GroupIdentifier>(
           item,
         }))
 
-    if (!items.length) {
+    const showHeader =
+      props.renderGroupHeader !== undefined && group.showHeader !== false
+    const isCollapsed = group.collapsed === true && !filter && showHeader
+
+    // Empty groups are hidden, unless they're collapsed or meant to be shown
+    // when empty (their header is still needed to interact with them).
+    const showEmpty = group.showWhenEmpty === true && !filter && showHeader
+    if (!items.length && !isCollapsed && !showEmpty) {
       continue
     }
 
     groupIndices.push(idx)
 
-    if (props.renderGroupHeader && group.showHeader !== false) {
+    if (showHeader) {
       groupRows.push({ kind: 'group', identifier: group.identifier })
     }
 
-    for (const { item, matches } of items) {
+    for (const { item, matches } of isCollapsed ? [] : items) {
       if (selectedItem && item.id === selectedItem.id) {
         selectedRow = {
           section,

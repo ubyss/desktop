@@ -22,6 +22,9 @@ interface IRepositoryListItemContextMenuConfig {
   onRemoveRepositoryAlias: (repository: Repository) => void
   onCreateWorktree?: (repository: Repository) => void
   onShowWorktrees?: (repository: Repository) => void
+
+  /** Items to move the repository between custom groups */
+  groupMenuItems?: ReadonlyArray<IMenuItem>
 }
 
 export const generateRepositoryListContextMenu = (
@@ -40,6 +43,7 @@ export const generateRepositoryListContextMenu = (
 
   const items: ReadonlyArray<IMenuItem> = [
     ...buildAliasMenuItems(config),
+    ...(config.groupMenuItems ?? []),
     ...buildWorktreeMenuItems(config),
     {
       label: __DARWIN__ ? 'Copy Repo Name' : 'Copy repo name',

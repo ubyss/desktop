@@ -326,6 +326,12 @@ import {
   setWatchedRepositoryFolders,
   unignoreRepositoryPath,
 } from '../watched-repository-folders'
+import {
+  defaultRepositoryGroupsState,
+  IRepositoryGroupsState,
+  loadRepositoryGroupsState,
+  saveRepositoryGroupsState,
+} from '../repository-groups'
 import { ComputedAction } from '../../models/computed-action'
 import {
   createDesktopStashEntry,
@@ -607,6 +613,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
   private accounts: ReadonlyArray<Account> = new Array<Account>()
   private repositories: ReadonlyArray<Repository> = new Array<Repository>()
   private recentRepositories: ReadonlyArray<number> = new Array<number>()
+  private repositoryGroups: IRepositoryGroupsState =
+    defaultRepositoryGroupsState
 
   private selectedRepository: Repository | CloningRepository | null = null
 
@@ -1281,6 +1289,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       accounts: this.accounts,
       repositories,
       recentRepositories: this.recentRepositories,
+      repositoryGroups: this.repositoryGroups,
       localRepositoryStateLookup: this.localRepositoryStateLookup,
       windowState: this.windowState,
       windowZoomFactor: this.windowZoomFactor,
@@ -2681,6 +2690,16 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.updateMenuLabelsForSelectedRepository()
 
     this.startWatchingRepositoryFolders()
+
+    this.repositoryGroups = loadRepositoryGroupsState()
+    this.emitUpdate()
+  }
+
+  /** Update the custom groups, order and collapsed groups of the repository list */
+  public _setRepositoryGroups(repositoryGroups: IRepositoryGroupsState) {
+    this.repositoryGroups = repositoryGroups
+    saveRepositoryGroupsState(repositoryGroups)
+    this.emitUpdate()
   }
 
   /** Update the folders whose repositories are added automatically */

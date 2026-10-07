@@ -146,6 +146,7 @@ import { CommitDragElement } from './drag-elements/commit-drag-element'
 import classNames from 'classnames'
 import { MoveToApplicationsFolder } from './move-to-applications-folder'
 import { ChangeRepositoryAlias } from './change-repository-alias/change-repository-alias-dialog'
+import { RepositoryGroupNameDialog } from './repositories-list/repository-group-name-dialog'
 import { ThankYou } from './thank-you'
 import {
   getUserContributions,
@@ -2385,6 +2386,19 @@ export class App extends React.Component<IAppProps, IAppState> {
           />
         )
       }
+      case PopupType.RepositoryGroupName: {
+        return (
+          <RepositoryGroupNameDialog
+            key="repository-group-name"
+            dispatcher={this.props.dispatcher}
+            repositoryGroups={this.state.repositoryGroups}
+            groupId={popup.groupId}
+            initialName={popup.initialName}
+            repositoryPath={popup.repositoryPath}
+            onDismissed={onPopupDismissedFn}
+          />
+        )
+      }
       case PopupType.ThankYou:
         return (
           <ThankYou
@@ -3381,6 +3395,7 @@ export class App extends React.Component<IAppProps, IAppState> {
         onSelectionChanged={this.onSelectionChanged}
         repositories={repositories}
         recentRepositories={this.state.recentRepositories}
+        repositoryGroups={this.state.repositoryGroups}
         localRepositoryStateLookup={this.state.localRepositoryStateLookup}
         askForConfirmationOnRemoveRepository={
           this.state.askForConfirmationOnRepositoryRemoval

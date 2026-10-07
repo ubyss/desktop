@@ -13,6 +13,13 @@ import { IAheadBehind } from '../../models/branch'
 import { assertNever } from '../../lib/fatal-error'
 import { isDotCom } from '../../lib/endpoint-capabilities'
 import { Owner } from '../../models/owner'
+import {
+  defaultRepositoryGroupsState,
+  getCustomGroupIdForPath,
+  getCustomGroupKey,
+  IRepositoryGroupsState,
+  sortGroupKeys,
+} from '../../lib/repository-groups'
 
 export type RepositoryListGroup =
   | {
@@ -26,23 +33,52 @@ export type RepositoryListGroup =
       kind: 'enterprise'
       host: string
     }
+  | {
+      /** A group created by the user */
+      kind: 'custom'
+      id: string
+      name: string
+    }
 
 /**
- * Returns a unique grouping key (string) for a repository group. Doubles as a
- * case sensitive sorting key (i.e the case sensitive sort order of the keys is
- * the order in which the groups will be displayed in the repository list).
+ * Returns a unique, stable key (string) for a repository group. It's used to
+ * remember the user's order and collapsed groups.
  */
 export const getGroupKey = (group: RepositoryListGroup) => {
   const { kind } = group
   switch (kind) {
     case 'recent':
-      return `0:recent`
+      return 'recent'
+    case 'custom':
+      return getCustomGroupKey(group.id)
     case 'dotcom':
-      return `1:dotcom:${group.owner.login}`
+      return `dotcom:${group.owner.login}`
     case 'enterprise':
-      return `2:enterprise:${group.host}`
+      return `enterprise:${group.host}`
     case 'other':
-      return `3:other`
+      return 'other'
+    default:
+      assertNever(group, `Unknown repository group kind ${kind}`)
+  }
+}
+
+/**
+ * Returns a case sensitive sorting key for a repository group, defining the
+ * default order of the groups in the repository list.
+ */
+const getDefaultSortKey = (group: RepositoryListGroup) => {
+  const { kind } = group
+  switch (kind) {
+    case 'recent':
+      return `0:recent`
+    case 'custom':
+      return `1:custom:${group.name.toLowerCase()}`
+    case 'dotcom':
+      return `2:dotcom:${group.owner.login}`
+    case 'enterprise':
+      return `3:enterprise:${group.host}`
+    case 'other':
+      return `4:other`
     default:
       assertNever(group, `Unknown repository group kind ${kind}`)
   }
@@ -63,7 +99,16 @@ const recentRepositoriesThreshold = 7
 const getHostForRepository = (repo: RepositoryWithGitHubRepository) =>
   new URL(getHTMLURL(repo.gitHubRepository.endpoint)).host
 
-const getGroupForRepository = (repo: Repositoryish): RepositoryListGroup => {
+const getGroupForRepository = (
+  repo: Repositoryish,
+  groupsState: IRepositoryGroupsState
+): RepositoryListGroup => {
+  const customGroupId = getCustomGroupIdForPath(groupsState, repo.path)
+  const customGroup = groupsState.customGroups.find(g => g.id === customGroupId)
+  if (customGroup !== undefined) {
+    return { kind: 'custom', id: customGroup.id, name: customGroup.name }
+  }
+
   if (repo instanceof Repository && isRepositoryWithGitHubRepository(repo)) {
     return isDotCom(repo.gitHubRepository.endpoint)
       ? { kind: 'dotcom', owner: repo.gitHubRepository.owner }
@@ -77,7 +122,8 @@ type RepoGroupItem = { group: RepositoryListGroup; repos: Repositoryish[] }
 export function groupRepositories(
   repositories: ReadonlyArray<Repositoryish>,
   localRepositoryStateLookup: ReadonlyMap<number, ILocalRepositoryState>,
-  recentRepositories: ReadonlyArray<number>
+  recentRepositories: ReadonlyArray<number>,
+  groupsState: IRepositoryGroupsState = defaultRepositoryGroupsState
 ): ReadonlyArray<IFilterListGroup<IRepositoryListItem, RepositoryListGroup>> {
   const includeRecentGroup = repositories.length > recentRepositoriesThreshold
   const recentSet = includeRecentGroup ? new Set(recentRepositories) : undefined
@@ -99,13 +145,30 @@ export function groupRepositories(
       addToGroup({ kind: 'recent' }, repo)
     }
 
-    addToGroup(getGroupForRepository(repo), repo)
+    addToGroup(getGroupForRepository(repo, groupsState), repo)
   }
 
-  return Array.from(groups)
-    .sort(([xKey], [yKey]) => compare(xKey, yKey))
-    .map(([, { group, repos }]) => ({
+  // Every group created by the user is shown, even when it's still empty, so
+  // that repositories can be moved into it.
+  for (const { id, name } of groupsState.customGroups) {
+    const group: RepositoryListGroup = { kind: 'custom', id, name }
+    if (!groups.has(getGroupKey(group))) {
+      groups.set(getGroupKey(group), { group, repos: [] })
+    }
+  }
+
+  const defaultOrder = Array.from(groups.values())
+    .sort((x, y) =>
+      compare(getDefaultSortKey(x.group), getDefaultSortKey(y.group))
+    )
+    .map(({ group }) => getGroupKey(group))
+
+  return sortGroupKeys(defaultOrder, groupsState.order)
+    .map(key => groups.get(key)!)
+    .map(({ group, repos }) => ({
       identifier: group,
+      collapsed: groupsState.collapsed.includes(getGroupKey(group)),
+      showWhenEmpty: group.kind === 'custom',
       items: toSortedListItems(
         group,
         repos,
@@ -154,13 +217,14 @@ const toSortedListItems = (
         id: r.id.toString(),
         repository: r,
         needsDisambiguation:
-          // If the repository is in the enterprise group and has a duplicate
-          // name in the group, we need to disambiguate it. We don't have to
-          // disambiguate repositories in the 'dotcom' group because they are
-          // already grouped by owner. If the repository is in the 'recent'
-          // group and has a duplicate name in any group, we need to
+          // If the repository is in the enterprise or a custom group and has a
+          // duplicate name in the group, we need to disambiguate it. We don't
+          // have to disambiguate repositories in the 'dotcom' group because
+          // they are already grouped by owner. If the repository is in the
+          // 'recent' group and has a duplicate name in any group, we need to
           // disambiguate it.
-          ((groupNames.get(title) ?? 0) > 1 && group.kind === 'enterprise') ||
+          ((groupNames.get(title) ?? 0) > 1 &&
+            (group.kind === 'enterprise' || group.kind === 'custom')) ||
           ((allNames.get(title) ?? 0) > 1 && group.kind === 'recent'),
         aheadBehind: repoState?.aheadBehind ?? null,
         changedFilesCount: repoState?.changedFilesCount ?? 0,

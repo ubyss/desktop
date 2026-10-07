@@ -1,3 +1,4 @@
+import { IRepositoryGroupsState } from './repository-groups'
 import type {
   CopilotModelsByAccount,
   CopilotModelSelectionsByAccount,
@@ -101,6 +102,9 @@ export interface IAppState {
    * List of IDs of the most recently opened repositories (most recent first)
    */
   readonly recentRepositories: ReadonlyArray<number>
+
+  /** The user's custom groups, order and collapsed groups in the repository list */
+  readonly repositoryGroups: IRepositoryGroupsState
 
   /**
    * A cache of the latest repository state values, keyed by the repository id
