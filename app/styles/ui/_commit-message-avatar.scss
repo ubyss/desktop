@@ -97,7 +97,7 @@
       margin-bottom: var(--spacing);
     }
 
-    width: 300px;
+    width: 340px;
   }
 
   .link-button-component {
@@ -118,8 +118,8 @@
   }
 
   .commit-email-options {
-    // Show one and a half options so it's clear the list scrolls
-    max-height: calc(var(--email-avatar-option-height) * 1.5 + var(--email-avatar-option-gap));
+    // Show two and a half options so it's clear the list scrolls
+    max-height: calc(var(--email-avatar-option-height) * 2.5 + var(--email-avatar-option-gap) * 2);
     overflow-y: auto;
   }
 }

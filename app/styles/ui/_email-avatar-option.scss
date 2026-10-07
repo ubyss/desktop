@@ -1,7 +1,7 @@
 // A compact, selectable list of email addresses with their avatars
 .email-avatar-options,
 .commit-email-options {
-  --email-avatar-option-height: 28px;
+  --email-avatar-option-height: 34px;
   --email-avatar-option-gap: 2px;
 
   list-style: none;
@@ -23,7 +23,7 @@
   border: 1px solid transparent;
   border-radius: var(--border-radius);
   background-color: transparent;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size);
   text-align: left;
 
   &:hover {
@@ -38,12 +38,12 @@
   .avatar-container,
   .avatar {
     flex-shrink: 0;
-    width: 18px;
-    height: 18px;
+    width: 24px;
+    height: 24px;
   }
 
   .avatar-container {
-    margin-right: var(--spacing-half);
+    margin-right: var(--spacing);
   }
 
   .email-avatar-option-email {
