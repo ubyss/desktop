@@ -1,0 +1,128 @@
+// A compact, selectable list of email addresses with their avatars
+.email-avatar-options,
+.commit-email-options {
+  --email-avatar-option-height: 28px;
+  --email-avatar-option-gap: 2px;
+
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  li + li {
+    margin-top: var(--email-avatar-option-gap);
+  }
+}
+
+.email-avatar-option {
+  // override default button styles
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--email-avatar-option-height);
+  padding: 0 var(--spacing-half);
+  border: 1px solid transparent;
+  border-radius: var(--border-radius);
+  background-color: transparent;
+  font-size: var(--font-size-sm);
+  text-align: left;
+
+  &:hover {
+    background-color: var(--box-hover-background-color);
+  }
+
+  &.selected {
+    border-color: var(--focus-color);
+    background-color: var(--box-selected-background-color);
+  }
+
+  .avatar-container,
+  .avatar {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+  }
+
+  .avatar-container {
+    margin-right: var(--spacing-half);
+  }
+
+  .email-avatar-option-email {
+    flex-grow: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .octicon {
+    flex-shrink: 0;
+    height: 12px;
+    margin-left: var(--spacing-half);
+    color: var(--color-new);
+  }
+}
+
+// The email picker in the Git author preferences
+.git-email-picker-row .git-email-picker {
+  flex-grow: 1;
+
+  .button-component {
+    height: var(--text-field-height);
+  }
+
+  .git-email-picker-selected {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    font-weight: normal;
+
+    .avatar-container,
+    .avatar {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+    }
+
+    .avatar-container,
+    .octicon {
+      margin-right: var(--spacing-half);
+    }
+
+    .git-email-picker-selected-email {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .popover-dropdown-popover {
+    min-height: 0;
+    width: 340px;
+  }
+
+  .git-email-picker-content {
+    flex-grow: 1;
+    padding: var(--spacing-half);
+    overflow-y: auto;
+  }
+
+  .git-email-picker-group {
+    margin: var(--spacing-half) var(--spacing-half) var(--spacing-third);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-secondary-color);
+    text-transform: uppercase;
+  }
+
+  .git-email-picker-other {
+    @extend .email-avatar-option;
+    margin-top: var(--spacing-half);
+    border-top-color: transparent;
+
+    .octicon {
+      height: 12px;
+      margin: 0 var(--spacing-half) 0 3px;
+      color: var(--text-secondary-color);
+    }
+  }
+}

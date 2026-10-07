@@ -16,6 +16,9 @@ interface IPopoverDropdownProps {
   readonly buttonAriaLabel?: string
   readonly decoration?: PopoverDecoration
   readonly label?: string
+
+  /** Whether the button that opens the dropdown is disabled */
+  readonly disabled?: boolean
   /**
    * The class name to apply to the open button. This is useful for
    * applying the dialog-preferred-focus class to the button when it
@@ -146,6 +149,7 @@ export class PopoverDropdown extends React.Component<
           onButtonRef={this.onInvokeButtonRef}
           id={this.openButtonId}
           className={this.props.openButtonClassName}
+          disabled={this.props.disabled}
           ariaExpanded={this.state.showPopover}
           ariaHaspopup="dialog"
           ariaControls={ariaControls}

@@ -18,7 +18,7 @@ import classNames from 'classnames'
 import { RepoRulesMetadataFailures } from '../../models/repo-rules'
 import { RepoRulesMetadataFailureList } from '../repository-rules/repo-rules-failure-list'
 import { Account } from '../../models/account'
-import { CommitEmailOption } from './commit-email-option'
+import { EmailAvatarOption } from '../lib/email-avatar-option'
 import { addSavedGitEmail, getSavedGitEmails } from '../../lib/saved-git-emails'
 
 export type CommitMessageAvatarWarningType =
@@ -493,7 +493,7 @@ export class CommitMessageAvatar extends React.Component<
           }
         >
           {emails.map(email => (
-            <CommitEmailOption
+            <EmailAvatarOption
               key={email}
               email={email}
               name={this.props.user?.name ?? ''}

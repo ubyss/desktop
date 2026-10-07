@@ -1,12 +1,12 @@
 import * as React from 'react'
 import { TextBox } from './text-box'
 import { Row } from './row'
-import {
-  Account,
-  isDotComAccount,
-  isEnterpriseAccount,
-} from '../../models/account'
-import { Select } from './select'
+import { Account, isDotComAccount } from '../../models/account'
+import { PopoverDropdown } from './popover-dropdown'
+import { Avatar } from './avatar'
+import { EmailAvatarOption } from './email-avatar-option'
+import { Octicon } from '../octicons'
+import * as octicons from '../octicons/octicons.generated'
 import { GitEmailNotFoundWarning } from './git-email-not-found-warning'
 import { getStealthEmailForAccount } from '../../lib/email'
 import memoizeOne from 'memoize-one'
@@ -73,6 +73,7 @@ export class GitConfigUserForm extends React.Component<
   IGitConfigUserFormState
 > {
   private emailInputRef = React.createRef<TextBox>()
+  private emailDropdownRef = React.createRef<PopoverDropdown>()
 
   private getAccountEmailsFromAccounts = memoizeOne(
     (accounts: ReadonlyArray<Account>) => {
@@ -213,43 +214,53 @@ export class GitConfigUserForm extends React.Component<
       return null
     }
 
-    // When the user signed in both accounts, show a suffix to differentiate
-    // the origin of each email address
-    const shouldShowAccountType =
-      this.props.accounts.some(isDotComAccount) &&
-      this.props.accounts.some(isEnterpriseAccount)
-
-    const accountSuffix = (account: Account) =>
-      isDotComAccount(account) ? '(GitHub.com)' : '(GitHub Enterprise)'
+    const { emailIsOther } = this.state
+    const savedOnlyEmails = this.savedOnlyEmails
 
     return (
-      <Row>
-        <Select
+      <Row className="git-email-picker-row">
+        <PopoverDropdown
+          ref={this.emailDropdownRef}
+          className="git-email-picker"
           label="Email"
-          value={
-            this.state.emailIsOther ? OtherEmailSelectValue : this.props.email
-          }
           disabled={this.props.disabled}
-          onChange={this.onEmailSelectChange}
+          contentTitle="Choose an email"
+          maxHeight={320}
+          buttonAriaLabel={`Email: ${
+            emailIsOther ? OtherEmailSelectValue : this.props.email
+          }`}
+          buttonContent={this.renderSelectedEmail()}
         >
-          {this.accountEmails.map(e => (
-            <option key={e.email} value={e.email}>
-              {e.email} {shouldShowAccountType && accountSuffix(e.account)}
-            </option>
-          ))}
-          {this.savedOnlyEmails.length > 0 && (
-            <optgroup label="Saved emails">
-              {this.savedOnlyEmails.map(e => (
-                <option key={`saved-${e}`} value={e}>
-                  {e}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          <option key={OtherEmailSelectValue} value={OtherEmailSelectValue}>
-            {OtherEmailSelectValue}
-          </option>
-        </Select>
+          <div className="git-email-picker-content">
+            <ul className="email-avatar-options">
+              {this.accountEmails.map(e =>
+                this.renderEmailOption(e.email, e.account.endpoint)
+              )}
+            </ul>
+            {savedOnlyEmails.length > 0 && (
+              <>
+                <h4 className="git-email-picker-group">Saved emails</h4>
+                <ul className="email-avatar-options">
+                  {savedOnlyEmails.map(e =>
+                    this.renderEmailOption(e, this.defaultAvatarEndpoint)
+                  )}
+                </ul>
+              </>
+            )}
+            <Button
+              className={
+                emailIsOther
+                  ? 'git-email-picker-other selected'
+                  : 'git-email-picker-other'
+              }
+              ariaPressed={emailIsOther}
+              onClick={this.onOtherEmailClick}
+            >
+              <Octicon symbol={octicons.pencil} />
+              <span>{OtherEmailSelectValue}</span>
+            </Button>
+          </div>
+        </PopoverDropdown>
         {this.isSavedEmailSelected && (
           <Button
             onClick={this.onRemoveSavedEmail}
@@ -261,6 +272,60 @@ export class GitConfigUserForm extends React.Component<
         )}
       </Row>
     )
+  }
+
+  private renderSelectedEmail() {
+    if (this.state.emailIsOther) {
+      return (
+        <span className="git-email-picker-selected">
+          <Octicon symbol={octicons.pencil} />
+          <span className="git-email-picker-selected-email">
+            {OtherEmailSelectValue}
+          </span>
+        </span>
+      )
+    }
+
+    const { email, name, accounts } = this.props
+    const account = this.accountEmails.find(
+      e => e.normalizedEmail === email.toLowerCase()
+    )?.account
+    const endpoint = account?.endpoint ?? this.defaultAvatarEndpoint
+
+    return (
+      <span className="git-email-picker-selected">
+        <Avatar
+          accounts={accounts}
+          user={{ email, name, endpoint, avatarURL: undefined }}
+          title={null}
+        />
+        <span className="git-email-picker-selected-email">{email}</span>
+      </span>
+    )
+  }
+
+  private renderEmailOption(email: string, endpoint: string | null) {
+    return (
+      <EmailAvatarOption
+        key={email}
+        email={email}
+        name={this.props.name}
+        endpoint={endpoint}
+        accounts={this.props.accounts}
+        isSelected={
+          !this.state.emailIsOther &&
+          email.toLowerCase() === this.props.email.toLowerCase()
+        }
+        onSelect={this.onEmailOptionSelected}
+      />
+    )
+  }
+
+  /** The endpoint used for the avatars of emails not tied to an account */
+  private get defaultAvatarEndpoint(): string | null {
+    const account =
+      this.props.accounts.find(isDotComAccount) ?? this.props.accounts.at(0)
+    return account?.endpoint ?? null
   }
 
   private renderEmailTextBox() {
@@ -334,16 +399,16 @@ export class GitConfigUserForm extends React.Component<
     this.setState({ savedEmails, emailIsOther: true })
   }
 
-  private onEmailSelectChange = (event: React.FormEvent<HTMLSelectElement>) => {
-    const value = event.currentTarget.value
-    this.setState({
-      emailIsOther: value === OtherEmailSelectValue,
-    })
+  private onEmailOptionSelected = (email: string) => {
+    this.emailDropdownRef.current?.closePopover()
+    this.setState({ emailIsOther: false })
+    this.props.onEmailChanged(email)
+  }
 
-    // If the dropdown selection is "Other", the email address itself didn't
-    // change, technically, so no need to emit an update notification.
-    if (value !== OtherEmailSelectValue) {
-      this.props.onEmailChanged?.(value)
-    }
+  private onOtherEmailClick = () => {
+    // Selecting "Other" doesn't change the email address itself, so there's
+    // no need to emit an update notification.
+    this.emailDropdownRef.current?.closePopover()
+    this.setState({ emailIsOther: true })
   }
 }
